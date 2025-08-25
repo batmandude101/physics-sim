@@ -381,48 +381,40 @@
             updateParticles() {
                 // Update flame particles
                 // Update flame particles
-                for (let i = this.flameParticles.length - 1; i >= 0; i--) {
-                    const p = this.flameParticles[i];
+// Update flame particles
+for (let i = this.flameParticles.length - 1; i >= 0; i--) {
+    const p = this.flameParticles[i];
 
-                    // 🔥 Base force: always upwards
-                    let fx = 0;
-                    let fy = -1;
+    // 🔥 Base: same as your original upward flow
+    p.vx += (Math.random() - 0.5) * 0.05;  // flicker sideways
+    p.vy -= Math.random() * 0.04;          // flicker upward
 
-                    // Exaggerated opposite tilt
-                    // 3° phone tilt → ~30° flame tilt
-                    const exaggeration = 2; // tweak to taste
-                    const tiltRad = (-this.lastTilt * exaggeration) * (Math.PI / 180);
+    // Strong upward push
+    p.vy -= 0.15;  
 
-                    // Add sideways component
-                    fx += Math.sin(tiltRad) * 0.6; // 0.6 keeps it balanced
-                    fy += Math.cos(tiltRad);
+    // Add exaggerated tilt (opposite direction)
+    const exaggeration = 10; // 3° tilt → 30° flame tilt
+    const tiltForce = (-this.lastTilt / 90) * exaggeration; 
+    p.vx += tiltForce * 0.1; // sideways push
 
-                    // Normalize
-                    const mag = Math.sqrt(fx * fx + fy * fy);
-                    fx /= mag;
-                    fy /= mag;
+    // Wind
+    p.vx += this.wind.x;
+    p.vy += this.wind.y;
 
-                    // Apply direction
-                    p.vx += fx * 0.25 + this.wind.x;
-                    p.vy += fy * 0.25 + this.wind.y;
+    // Drag
+    p.vx *= 0.93;
+    p.vy *= 0.93;
 
-                    // Natural flicker
-                    p.vx += (Math.random() - 0.5) * 0.08;
-                    p.vy += (Math.random() - 0.5) * 0.05;
+    // Move
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
 
-                    // Drag
-                    p.vx *= 0.93;
-                    p.vy *= 0.93;
+    if (p.life <= 0 || p.y < -100) {
+        this.flameParticles.splice(i, 1);
+    }
+}
 
-                    // Move particle
-                    p.x += p.vx;
-                    p.y += p.vy;
-                    p.life--;
-
-                    if (p.life <= 0 || p.y < -100) {
-                        this.flameParticles.splice(i, 1);
-                    }
-                }
 
 
                 // Update wax drops

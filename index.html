@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Physics Candle 🕯️</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0c0c0c, #1a1a1a);
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            z-index: 100;
+        }
+        
+        .control-group {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 6px 8px;
+            border-radius: 6px;
+            color: white;
+            font-size: 11px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: bold;
+        }
+        
+        input[type="range"] {
+            width: 70px;
+            height: 20px;
+        }
+        
+        input[type="color"] {
+            width: 35px;
+            height: 25px;
+            border: none;
+            border-radius: 3px;
+        }
+        
+        button {
+            background: #444;
+            color: white;
+            border: 1px solid #666;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        
+        button:active {
+            background: #666;
+        }
+        
+        #info {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        #debugInfo {
+            position: fixed;
+            top: 120px;
+            left: 10px;
+            color: white;
+            font-size: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls">
+        <div class="control-group">
+            <label>Candle</label>
+            <input type="color" id="candleColor" value="#d4a574">
+        </div>
+        
+        <div class="control-group">
+            <label>Flame</label>
+            <input type="color" id="flameColor" value="#ff4500">
+        </div>
+        
+        <div class="control-group">
+            <label>Wind: <span id="windValue">0</span></label>
+            <input type="range" id="windSlider" min="-30" max="30" value="0">
+        </div>
+        
+        <div class="control-group">
+            <label>Size</label>
+            <input type="range" id="sizeSlider" min="0.5" max="1.5" step="0.1" value="1">
+        </div>
+        
+        <div class="control-group">
+            <button id="resetBtn">Reset</button>
+        </div>
+    </div>
+    
+    <div id="debugInfo">
+        Status: Loading...
+    </div>
+    
+    <div id="info">
+        🕯️ Tilt your device to see physics! Tap screen if no flame appears.
+    </div>
+
+    <script>
+        console.log('🕯️ Physics Candle - Starting...');
+        
+        class CandleApp {
+            constructor() {
+                console.log('🕯️ Initializing CandleApp...');
+                
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.debugInfo = document.getElementById('debugInfo');
+                
+                // Initialize particle systems FIRST
+                this.flameParticles = [];
+                this.waxDrops = [];
+                this.frameCount = 0;
+                
+                // Physics properties
+                this.gravity = { x: 0, y: 0.2 };
+                this.wind = { x: 0, y: 0 };
+                
+                // Candle properties
+                this.candleColor = '#d4a574';
+                this.flameColor = '#ff4500';
+                this.candleScale = 1;
+                
+                // Device orientation
+                this.orientationSupported = false;
+                this.deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+                this.lastTilt = 0;
+                
+                console.log('🕯️ Properties initialized');
+                
+                this.init();
+            }
+            
+            init() {
+                console.log('🕯️ Starting initialization...');
+                
+                this.setupCanvas();
+                this.testCanvas();
+                this.setupControls();
+                this.setupDeviceOrientation();
+                this.initializeParticles();
+                
+                console.log('🕯️ Starting animation loop...');
+                this.animate();
+                
+                // Touch restart
+                this.canvas.addEventListener('touchstart', () => {
+                    console.log('🕯️ Touch detected - reinitializing particles');
+                    this.initializeParticles();
+                }, { passive: true });
+            }
+            
+            testCanvas() {
+                try {
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fillRect(0, 0, 1, 1);
+                    console.log('✅ Canvas test successful');
+                    this.updateDebug('Canvas: ✅ Working');
+                } catch (e) {
+                    console.error('❌ Canvas test failed:', e);
+                    this.updateDebug('Canvas: ❌ Error - ' + e.message);
+                }
+            }
+            
+            updateDebug(status) {
+                if (this.debugInfo) {
+                    const particleCount = this.flameParticles ? this.flameParticles.length : 0;
+                    const waxCount = this.waxDrops ? this.waxDrops.length : 0;
+                    const gravityX = this.gravity ? this.gravity.x.toFixed(2) : '0';
+                    const gravityY = this.gravity ? this.gravity.y.toFixed(2) : '0';
+                    
+                    this.debugInfo.innerHTML = 
+                        status + '<br>' +
+                        'Particles: ' + particleCount + ' flame, ' + waxCount + ' wax<br>' +
+                        'Gravity: (' + gravityX + ', ' + gravityY + ')<br>' +
+                        'Tilt: ' + this.lastTilt + '°';
+                }
+            }
+            
+            setupCanvas() {
+                const updateSize = () => {
+                    this.canvas.width = window.innerWidth;
+                    this.canvas.height = window.innerHeight;
+                    this.canvas.style.width = window.innerWidth + 'px';
+                    this.canvas.style.height = window.innerHeight + 'px';
+                };
+                
+                updateSize();
+                console.log('✅ Canvas size:', this.canvas.width, 'x', this.canvas.height);
+                
+                window.addEventListener('resize', updateSize);
+            }
+            
+            setupControls() {
+                const candleColorInput = document.getElementById('candleColor');
+                const flameColorInput = document.getElementById('flameColor');
+                const windSlider = document.getElementById('windSlider');
+                const sizeSlider = document.getElementById('sizeSlider');
+                const resetBtn = document.getElementById('resetBtn');
+                const windValue = document.getElementById('windValue');
+                
+                candleColorInput.addEventListener('input', (e) => {
+                    this.candleColor = e.target.value;
+                });
+                
+                flameColorInput.addEventListener('input', (e) => {
+                    this.flameColor = e.target.value;
+                });
+                
+                windSlider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    this.wind.x = value / 500;
+                    windValue.textContent = value;
+                });
+                
+                sizeSlider.addEventListener('input', (e) => {
+                    this.candleScale = parseFloat(e.target.value);
+                });
+                
+                resetBtn.addEventListener('click', () => {
+                    this.reset();
+                });
+                
+                console.log('✅ Controls setup complete');
+            }
+            
+            setupDeviceOrientation() {
+                const handleOrientation = (e) => {
+                    this.orientationSupported = true;
+                    this.deviceOrientation.alpha = e.alpha || 0;
+                    this.deviceOrientation.beta = e.beta || 0;
+                    this.deviceOrientation.gamma = e.gamma || 0;
+                    
+                    this.lastTilt = Math.round(e.gamma || 0);
+                    
+                    // Convert device tilt to gravity
+                    const gamma = (e.gamma || 0) * Math.PI / 180;
+                    const beta = (e.beta || 0) * Math.PI / 180;
+                    
+                    this.gravity.x = -Math.sin(gamma) * 0.35;
+                    this.gravity.y = Math.cos(gamma) * Math.abs(Math.cos(beta)) * 0.35;
+                    
+                    if (this.gravity.y < 0.05) {
+                        this.gravity.y = 0.05;
+                    }
+                    
+                    this.updateDebug('Orientation: ✅ Active');
+                };
+                
+                if (window.DeviceOrientationEvent) {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    console.log('✅ Device orientation listener added');
+                    
+                    // iOS permission request
+                    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                        document.addEventListener('touchstart', () => {
+                            DeviceOrientationEvent.requestPermission()
+                                .then(response => {
+                                    console.log('iOS orientation permission:', response);
+                                });
+                        }, { once: true });
+                    }
+                } else {
+                    console.log('❌ Device orientation not supported');
+                    this.updateDebug('Orientation: ❌ Not supported');
+                }
+                
+                // Touch fallback
+                this.canvas.addEventListener('touchmove', (e) => {
+                    if (!this.orientationSupported && e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        const centerX = this.canvas.width / 2;
+                        
+                        const tiltX = (touch.clientX - centerX) / centerX;
+                        this.gravity.x = tiltX * 0.3;
+                        this.gravity.y = Math.max(0.05, 0.3);
+                        this.lastTilt = Math.round(tiltX * 45);
+                        
+                        this.updateDebug('Touch: 🖐️ Simulating');
+                    }
+                }, { passive: true });
+            }
+            
+            initializeParticles() {
+                this.flameParticles = [];
+                this.waxDrops = [];
+                
+                for (let i = 0; i < 25; i++) {
+                    this.flameParticles.push(this.createFlameParticle());
+                }
+                
+                console.log('✅ Particles initialized:', this.flameParticles.length);
+                this.updateDebug('Particles: ✅ Initialized');
+            }
+            
+            createFlameParticle() {
+                const centerX = this.canvas.width / 2;
+                const candleTop = this.canvas.height * 0.65;
+                
+                return {
+                    x: centerX + (Math.random() - 0.5) * 18 * this.candleScale,
+                    y: candleTop + Math.random() * 5,
+                    vx: (Math.random() - 0.5) * 0.2,
+                    vy: -Math.random() * 1.2 - 0.3,
+                    life: Math.random() * 60 + 50,
+                    maxLife: Math.random() * 60 + 50,
+                    size: (Math.random() * 8 + 6) * this.candleScale
+                };
+            }
+            
+            createWaxDrop() {
+                if (Math.random() < 0.008) {
+                    const centerX = this.canvas.width / 2;
+                    const candleTop = this.canvas.height * 0.65;
+                    
+                    return {
+                        x: centerX + (Math.random() - 0.5) * 28 * this.candleScale,
+                        y: candleTop + Math.random() * 8,
+                        vx: (Math.random() - 0.5) * 0.03,
+                        vy: 0,
+                        size: (Math.random() * 2.5 + 1) * this.candleScale,
+                        life: 600
+                    };
+                }
+                return null;
+            }
+            
+            updateParticles() {
+                // Update flame particles
+                for (let i = this.flameParticles.length - 1; i >= 0; i--) {
+                    const p = this.flameParticles[i];
+                    
+                    // Apply wind
+                    p.vx += this.wind.x;
+                    p.vy += this.wind.y;
+                    
+                    // Flame goes opposite to gravity
+                    p.vx -= this.gravity.x * 2.2;
+                    p.vy -= this.gravity.y * 2.8;
+                    
+                    // Natural flame behavior
+                    p.vx += (Math.random() - 0.5) * 0.05;
+                    p.vy -= Math.random() * 0.04;
+                    
+                    // Apply drag
+                    p.vx *= 0.92;
+                    p.vy *= 0.92;
+                    
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life--;
+                    
+                    if (p.life <= 0 || p.y < -100) {
+                        this.flameParticles.splice(i, 1);
+                    }
+                }
+                
+                // Update wax drops
+                for (let i = this.waxDrops.length - 1; i >= 0; i--) {
+                    const drop = this.waxDrops[i];
+                    
+                    drop.vx += this.gravity.x * 0.6;
+                    drop.vy += this.gravity.y * 0.6;
+                    
+                    drop.vx *= 0.98;
+                    drop.vy *= 0.98;
+                    
+                    drop.x += drop.vx;
+                    drop.y += drop.vy;
+                    drop.life--;
+                    
+                    if (drop.life <= 0 || 
+                        drop.y > this.canvas.height + 100 ||
+                        drop.x < -100 || 
+                        drop.x > this.canvas.width + 100) {
+                        this.waxDrops.splice(i, 1);
+                    }
+                }
+                
+                // Maintain particle count
+                while (this.flameParticles.length < 35) {
+                    this.flameParticles.push(this.createFlameParticle());
+                }
+                
+                // Create wax drops
+                const newWaxDrop = this.createWaxDrop();
+                if (newWaxDrop && this.waxDrops.length < 15) {
+                    this.waxDrops.push(newWaxDrop);
+                }
+            }
+            
+            drawCandle() {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height * 0.75;
+                const width = 50 * this.candleScale;
+                const height = 160 * this.candleScale;
+                
+                // Candle shadow
+                this.ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                this.ctx.fillRect(centerX - width/2 + 4, centerY - height/2 + 4, width, height);
+                
+                // Candle body
+                this.ctx.fillStyle = this.candleColor;
+                this.ctx.fillRect(centerX - width/2, centerY - height/2, width, height);
+                
+                // Candle highlight
+                this.ctx.fillStyle = 'rgba(255,255,255,0.25)';
+                this.ctx.fillRect(centerX - width/2, centerY - height/2, width/3, height);
+                
+                // Wick
+                this.ctx.fillStyle = '#1a1a1a';
+                this.ctx.fillRect(centerX - 1.5, centerY - height/2 - 10, 3, 12);
+            }
+            
+            drawParticles() {
+                // Draw flame particles
+                this.flameParticles.forEach(p => {
+                    const alpha = Math.max(0, p.life / p.maxLife);
+                    const size = p.size * alpha;
+                    
+                    if (alpha > 0.1 && size > 1) {
+                        this.ctx.save();
+                        this.ctx.globalAlpha = alpha;
+                        
+                        // Inner core (white/yellow)
+                        this.ctx.fillStyle = 'rgba(255, 255, 200, 1)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, size * 0.3, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        
+                        // Middle flame (orange)
+                        this.ctx.fillStyle = 'rgba(255, 150, 0, 0.8)';
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, size * 0.6, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        
+                        // Outer flame
+                        this.ctx.fillStyle = this.flameColor;
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                        this.ctx.fill();
+                        
+                        this.ctx.restore();
+                    }
+                });
+                
+                // Draw wax drops
+                this.ctx.fillStyle = this.candleColor;
+                this.waxDrops.forEach(drop => {
+                    this.ctx.beginPath();
+                    this.ctx.arc(drop.x, drop.y, drop.size, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+            }
+            
+            reset() {
+                this.flameParticles = [];
+                this.waxDrops = [];
+                this.gravity = { x: 0, y: 0.2 };
+                this.wind = { x: 0, y: 0 };
+                this.lastTilt = 0;
+                
+                document.getElementById('windSlider').value = 0;
+                document.getElementById('windValue').textContent = '0';
+                
+                this.initializeParticles();
+                this.updateDebug('Reset: ✅ Complete');
+                console.log('✅ Reset complete');
+            }
+            
+            animate() {
+                this.frameCount++;
+                
+                // Clear canvas
+                this.ctx.fillStyle = '#111111';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                this.updateParticles();
+                this.drawCandle();
+                this.drawParticles();
+                
+                // Update debug every 60 frames
+                if (this.frameCount % 60 === 0) {
+                    this.updateDebug('Running: ✅ Active');
+                }
+                
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+        
+        // Initialize app
+        let candleApp;
+        
+        function startApp() {
+            try {
+                console.log('🕯️ Attempting to start app...');
+                candleApp = new CandleApp();
+                console.log('🕯️ App started successfully!');
+            } catch (error) {
+                console.error('❌ Failed to start app:', error);
+                document.getElementById('debugInfo').innerHTML = 'Error: ' + error.message;
+            }
+        }
+        
+        // Try multiple ways to start
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startApp);
+        } else {
+            startApp();
+        }
+        
+        window.addEventListener('load', () => {
+            if (!candleApp) {
+                console.log('🕯️ Backup initialization...');
+                startApp();
+            }
+        });
+        
+        console.log('🕯️ Script loaded successfully');
+    </script>
+</body>
+</html>

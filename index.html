@@ -384,8 +384,8 @@
                     p.vy += this.wind.y;
                     
                     // Flame goes opposite to gravity
-                    p.vx -= this.gravity.x * 2.2;
-                    p.vy -= this.gravity.y * 2.8;
+                    p.vx += this.gravity.x * 2.2;
+                    p.vy += this.gravity.y * 2.8;
                     
                     // Natural flame behavior
                     p.vx += (Math.random() - 0.5) * 0.05;

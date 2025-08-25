@@ -287,7 +287,9 @@
                     const beta = (e.beta || 0) * Math.PI / 180;
                     
                     this.gravity.x = -Math.sin(gamma) * 0.35;
-                    this.gravity.y = Math.cos(gamma) * Math.abs(Math.cos(beta)) * 0.35;
+
+                    this.gravity.x = Math.sin(gamma) * 0.35;    
+                    this.gravity.y = 0.2;         
                     
                     if (this.gravity.y < 0.05) {
                         this.gravity.y = 0.05;
